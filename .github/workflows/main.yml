@@ -1,0 +1,33 @@
+name: main
+on: 
+  push:
+  pull_request:
+  release:
+    types: [created]
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Set up Go 1.13
+      uses: actions/setup-go@v1
+      with:
+        go-version: 1.13
+      id: go
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v1
+    - name: Lint and test
+      run: | 
+        # Get golint
+        export PATH=$PATH:$(go env GOPATH)/bin
+        GO111MODULE=off go get -u golang.org/x/lint/golint
+        # Lint and test
+        make lint
+        make test
+    - uses: codecov/codecov-action@v1.0.3
+      if: github.repository == 'jthomperoo/holtwinters'
+      with:
+        token: ${{secrets.CODECOV_TOKEN}}
+        file: ./cover.out
+        flags: unittests
+        name: holtwinters
