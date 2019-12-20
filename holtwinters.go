@@ -22,9 +22,9 @@ package holtwinters
 
 import "fmt"
 
-// Predict takes in a seasonal historical series of data and produces a prediction of what the data will be in the future using triple
-// exponential smoothing. Existing data will also be smoothed alongside predictions. Returns the entire dataset with the predictions
-// appended to the end.
+// PredictAdditive takes in a seasonal historical series of data and produces a prediction of what the data will be in the future using triple
+// exponential smoothing using the additive method. Existing data will also be smoothed alongside predictions. Returns the entire dataset with
+// the predictions appended to the end.
 // series - Historical seasonal data, must be at least a full season, for optimal results use at least two full seasons,
 // the first value should be at the start of a season
 // seasonLength - The length of the data's seasons, must be at least 2
@@ -32,7 +32,7 @@ import "fmt"
 // beta - Exponential smoothing coefficient for trend, must be between 0 and 1
 // gamma - Exponential smoothing coefficient for seasonality, must be between 0 and 1
 // predictionLength - Number of predictions to make, set to 0 to make no predictions and only smooth, can't be negative
-func Predict(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) ([]float64, error) {
+func PredictAdditive(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) ([]float64, error) {
 	// Parameter validation mainly to avoid out of bounds errors and division by zero
 	err := validateParams(series, seasonLength, alpha, beta, gamma, predictionLength)
 	if err != nil {
@@ -48,7 +48,7 @@ func Predict(series []float64, seasonLength int, alpha float64, beta float64, ga
 	result := []float64{series[0]}
 	smooth := series[0]
 	trend := initialTrend(series, seasonLength)
-	seasonals := initialSeasonalComponents(series, seasonLength)
+	seasonals := initialSeasonalComponentsAdditive(series, seasonLength)
 
 	// Build prediction and smooth existing values
 	for i := 1; i < len(series)+predictionLength; i++ {
@@ -64,6 +64,53 @@ func Predict(series []float64, seasonLength int, alpha float64, beta float64, ga
 			trend = beta*(smooth-lastSmooth) + (1-beta)*trend
 			seasonals[i%seasonLength] = gamma*(val-smooth) + (1-gamma)*seasonals[i%seasonLength]
 			result = append(result, smooth+trend+seasonals[i%seasonLength])
+		}
+	}
+	return result, nil
+}
+
+// PredictMultiplicative takes in a seasonal historical series of data and produces a prediction of what the data will be in the future using triple
+// exponential smoothing using the multiplicative method. Existing data will also be smoothed alongside predictions. Returns the entire dataset with
+// the predictions appended to the end.
+// series - Historical seasonal data, must be at least a full season, for optimal results use at least two full seasons,
+// the first value should be at the start of a season
+// seasonLength - The length of the data's seasons, must be at least 2
+// alpha - Exponential smoothing coefficient for level, must be between 0 and 1
+// beta - Exponential smoothing coefficient for trend, must be between 0 and 1
+// gamma - Exponential smoothing coefficient for seasonality, must be between 0 and 1
+// predictionLength - Number of predictions to make, set to 0 to make no predictions and only smooth, can't be negative
+func PredictMultiplicative(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) ([]float64, error) {
+	// Parameter validation mainly to avoid out of bounds errors and division by zero
+	err := validateParams(series, seasonLength, alpha, beta, gamma, predictionLength)
+	if err != nil {
+		return nil, err
+	}
+
+	// Assumptions at this point, after params have been validated
+	// seasonLength >= 2
+	// series >= seasonLength
+	// alpha, beta, gamma >= 0.0 and <= 1.0
+
+	// Initial setup
+	result := []float64{series[0]}
+	smooth := series[0]
+	trend := initialTrend(series, seasonLength)
+	seasonals := initialSeasonalComponentsMultiplicative(series, seasonLength)
+
+	// Build prediction and smooth existing values
+	for i := 1; i < len(series)+predictionLength; i++ {
+		if i >= len(series) {
+			// Prediction
+			m := float64(i - len(series) + 1)
+			result = append(result, (smooth+m*trend)+seasonals[i%seasonLength])
+		} else {
+			// Smooth existing values
+			val := series[i]
+			lastSmooth := smooth
+			smooth = alpha*(val/seasonals[i%seasonLength]) + (1-alpha)*(smooth+trend)
+			trend = beta*(smooth-lastSmooth) + (1-beta)*trend
+			seasonals[i%seasonLength] = gamma*(val/smooth) + (1-gamma)*seasonals[i%seasonLength]
+			result = append(result, smooth+trend*seasonals[i%seasonLength])
 		}
 	}
 	return result, nil
@@ -86,7 +133,31 @@ func initialTrend(series []float64, seasonLength int) float64 {
 	return sum / float64(seasonLength)
 }
 
-func initialSeasonalComponents(series []float64, seasonLength int) []float64 {
+// validateParams ensures the parameters provided are valid, avoids NaN values and out of bounds errors
+func validateParams(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) error {
+	if seasonLength <= 1 {
+		return fmt.Errorf("Invalid parameter for prediction; season length must be at least 2, is %d", seasonLength)
+	}
+	if predictionLength < 0 {
+		return fmt.Errorf("Invalid parameter for prediction; prediction length must be at least 0, cannot be negative, is %d", predictionLength)
+	}
+	if alpha < 0.0 || alpha > 1.0 {
+		return fmt.Errorf("Invalid parameter for prediction; alpha must be between 0 and 1, is %f", alpha)
+	}
+	if beta < 0.0 || beta > 1.0 {
+		return fmt.Errorf("Invalid parameter for prediction; beta must be between 0 and 1, is %f", beta)
+	}
+	if gamma < 0.0 || gamma > 1.0 {
+		return fmt.Errorf("Invalid parameter for prediction; gamma must be between 0 and 1, is %f", gamma)
+	}
+	if len(series) < seasonLength {
+		return fmt.Errorf("Invalid parameter for prediction; must have at least 1 season of data to predict, season length: %d, series length: %d", seasonLength, len(series))
+	}
+	return nil
+}
+
+// initialSeasonalComponentsAdditive calculates the initial seasonal values for the additive method
+func initialSeasonalComponentsAdditive(series []float64, seasonLength int) []float64 {
 	var seasonals = make([]float64, seasonLength)
 	seasonAverages := []float64{}
 	nSeasons := len(series) / seasonLength
@@ -109,24 +180,26 @@ func initialSeasonalComponents(series []float64, seasonLength int) []float64 {
 	return seasonals
 }
 
-func validateParams(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) error {
-	if seasonLength <= 1 {
-		return fmt.Errorf("Invalid parameter for prediction; season length must be at least 2, is %d", seasonLength)
+// initialSeasonalComponentsMultiplicative calculates the initial seasonal values for the multiplicative method
+func initialSeasonalComponentsMultiplicative(series []float64, seasonLength int) []float64 {
+	var seasonals = make([]float64, seasonLength)
+	seasonAverages := []float64{}
+	nSeasons := len(series) / seasonLength
+	for i := 0; i < nSeasons; i++ {
+		// Calculate sum of season
+		sum := float64(0)
+		for j := seasonLength * i; j < seasonLength*i+seasonLength; j++ {
+			sum += series[j]
+		}
+		// Calculate average of season and add to slice
+		seasonAverages = append(seasonAverages, sum/float64(seasonLength))
 	}
-	if predictionLength < 0 {
-		return fmt.Errorf("Invalid parameter for prediction; prediction length must be at least 0, cannot be negative, is %d", predictionLength)
+	for i := 0; i < seasonLength; i++ {
+		sumOfValuesOverAverage := float64(0)
+		for j := 0; j < nSeasons; j++ {
+			sumOfValuesOverAverage += series[seasonLength*j+i] / seasonAverages[j]
+		}
+		seasonals[i] = sumOfValuesOverAverage / float64(nSeasons)
 	}
-	if alpha < 0.0 || alpha > 1.0 {
-		return fmt.Errorf("Invalid parameter for prediction; alpha must be between 0 and 1, is %f", alpha)
-	}
-	if beta < 0.0 || beta > 1.0 {
-		return fmt.Errorf("Invalid parameter for prediction; beta must be between 0 and 1, is %f", beta)
-	}
-	if gamma < 0.0 || gamma > 1.0 {
-		return fmt.Errorf("Invalid parameter for prediction; gamma must be between 0 and 1, is %f", gamma)
-	}
-	if len(series) < seasonLength {
-		return fmt.Errorf("Invalid parameter for prediction; must have at least 1 season of data to predict, season length: %d, series length: %d", seasonLength, len(series))
-	}
-	return nil
+	return seasonals
 }

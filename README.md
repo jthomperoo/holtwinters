@@ -19,14 +19,31 @@ go get -u github.com/jthomperoo/holtwinters
 
 ## Reference
 
-This package exposes a single function:
+This package exposes two functions:
 
 ```go
-Predict(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) ([]float64, error)
+PredictAdditive(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) ([]float64, error)
 ```
-Predict takes in a seasonal historical series of data and produces a prediction of what the data will be in the future using triple
-exponential smoothing. Existing data will also be smoothed alongside predictions. Returns the entire dataset with the predictions
-appended to the end.  
+PredictAdditive takes in a seasonal historical series of data and produces a prediction of what the data will be in the future using triple
+exponential smoothing using the additive method. Existing data will also be smoothed alongside predictions. Returns the entire dataset with
+the predictions appended to the end. If there is <2 full seasons of data provided, a more crude initial trend will be calculated using the first
+and second values in the dataset.
+ - **series** - Historical seasonal data, must be at least a full season, for optimal results use at least two full seasons, the first value should be at the start of a season
+ - **seasonLength** - The length of the data's seasons, must be at least 2
+ - **alpha** - Exponential smoothing coefficient for level, must be between 0 and 1
+ - **beta** - Exponential smoothing coefficient for trend, must be between 0 and 1
+ - **gamma** - Exponential smoothing coefficient for seasonality, must be between 0 and 1
+ - **predictionLength** - Number of predictions to make, set to 0 to make no predictions and only smooth, can't be negative  
+
+Returns the full series that has been smoothed, with predictions appended to the end. The only errors that can be returned are parameter validation errors, such as season length being too short, or alpha, beta, or gamma values being beyond 0-1.  
+
+```go
+PredictMultiplicative(series []float64, seasonLength int, alpha float64, beta float64, gamma float64, predictionLength int) ([]float64, error)
+```
+PredictMultiplicative takes in a seasonal historical series of data and produces a prediction of what the data will be in the future using triple
+exponential smoothing using the multiplicative method. Existing data will also be smoothed alongside predictions. Returns the entire dataset with
+the predictions appended to the end. If there is <2 full seasons of data provided, a more crude initial trend will be calculated using the first
+and second values in the dataset.
  - **series** - Historical seasonal data, must be at least a full season, for optimal results use at least two full seasons, the first value should be at the start of a season
  - **seasonLength** - The length of the data's seasons, must be at least 2
  - **alpha** - Exponential smoothing coefficient for level, must be between 0 and 1
